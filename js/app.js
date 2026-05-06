@@ -26,13 +26,53 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }, 300);
     }
+    // ── Header hide on scroll (mobile) ──
+    let lastScroll = 0;
+    const header = document.getElementById('nav-main');
+    
+    const handleSectionScroll = (container) => {
+        const currentScroll = container.scrollTop;
+        
+        // 1. Header hide logic (mobile only)
+        if (window.innerWidth < 768) {
+            if (currentScroll > lastScroll && currentScroll > 100) {
+                header.classList.add('nav-hidden');
+            } else {
+                header.classList.remove('nav-hidden');
+            }
+        }
+        lastScroll = currentScroll;
+
+        // 2. Back to top button logic
+        const btn = document.getElementById('back-to-top-btn');
+        if (btn) {
+            const isScrolled = currentScroll > 400;
+            btn.classList.toggle('is-visible', isScrolled);
+        }
+    };
+
+    // Attach to sections that scroll
+    ['relatos-section', 'memorial-section', 'who-we-are-section'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('scroll', () => handleSectionScroll(el));
+    });
+
+    // Initialize map interaction blocking
+    setTimeout(() => {
+        ['map-filters', 'stats-panel', 'filters-content'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) _blockMapInteraction(el);
+        });
+    }, 500);
 });
 
 // All navigable section IDs
 const ALL_SECTIONS = [
     'section-hero',
     'main-map-container',
-    'memorial-archive',
+    'relatos-section',
+    'memorial-section',
+    'who-we-are-section',
     'story-viewer',
     'participation-zone'
 ];
@@ -56,6 +96,10 @@ window.navigate = function(viewId) {
     // Close any open preview
     if (window.closeRelatoPreview) window.closeRelatoPreview();
 
+    // Hide back-to-top button on navigation
+    const bttBtn = document.getElementById('back-to-top-btn');
+    if (bttBtn) bttBtn.classList.remove('is-visible');
+
     if (viewId === 'home') {
         document.getElementById('section-hero').classList.remove('hidden');
     }
@@ -71,11 +115,19 @@ window.navigate = function(viewId) {
         // Force marker refresh for read status
         if (window.updateRelatos && window._relatosList) window.updateRelatos(window._relatosList);
     }
-    else if (viewId === 'memorial') {
-        document.getElementById('memorial-archive').classList.remove('hidden');
-        if (typeof _initBackToTop === 'function') _initBackToTop();
-        if (window.refreshMemorialCards) window.refreshMemorialCards();
+    else if (viewId === 'relatos') {
+        document.getElementById('relatos-section').classList.remove('hidden');
+        if (window.refreshRelatosCards) window.refreshRelatosCards();
     }
+    else if (viewId === 'memorial') {
+        document.getElementById('memorial-section').classList.remove('hidden');
+        if (window.loadVictimsData) window.loadVictimsData();
+    }
+    else if (viewId === 'who-we-are') {
+        document.getElementById('who-we-are-section').classList.remove('hidden');
+        if (window.renderWhoWeAre) window.renderWhoWeAre();
+    }
+
     else if (viewId === 'participate') {
         document.getElementById('participation-zone').classList.remove('hidden');
         if (window.initFormMap) window.initFormMap();
@@ -142,36 +194,32 @@ window.closeRelatoPreview = function() {
     if (preview) {
         const card = preview.querySelector('.relato-preview-card');
         if (card) card.classList.remove('is-visible');
-        preview.classList.add('hidden');
+        
+        // Wait for animation to finish before hiding
+        setTimeout(() => {
+            if (!card || !card.classList.contains('is-visible')) {
+                preview.classList.add('hidden');
+            }
+        }, 400);
     }
 }
 
-// ─── BACK TO TOP ─────────────────────────────
-function _initBackToTop() {
-    const memorial = document.getElementById('memorial-archive');
-    const btn = document.getElementById('back-to-top');
-    if (!memorial || !btn) return;
-
-    memorial.addEventListener('scroll', () => {
-        const isScrolled = memorial.scrollTop > 300;
-        btn.classList.toggle('opacity-100', isScrolled);
-        btn.classList.toggle('pointer-events-auto', isScrolled);
-        btn.classList.toggle('translate-y-0', isScrolled);
-        
-        btn.classList.toggle('opacity-0', !isScrolled);
-        btn.classList.toggle('pointer-events-none', !isScrolled);
-        btn.classList.toggle('translate-y-4', !isScrolled);
-    });
+// ─── BACK TO TOP (Global) ─────────────────────
+window.scrollToTopActiveSection = function() {
+    const activeSection = document.querySelector('.view-section:not(.hidden)');
+    if (activeSection) {
+        activeSection.scrollTo({ top: 0, behavior: 'smooth' });
+    }
 }
 
-// ─── MEMORIAL FILTERING ─────────────────────
-window._activeZone = null;
+// ─── RELATOS FILTERING ─────────────────────
+window._activeRelatosZone = null;
 
-window.filterMemorial = function() {
-    const searchTerm = (document.getElementById('memorial-search')?.value || '').toLowerCase();
+window.filterRelatos = function() {
+    const searchTerm = (document.getElementById('relatos-search')?.value || '').toLowerCase();
     const showRead = document.getElementById('filter-read')?.checked ?? true;
     const showUnread = document.getElementById('filter-unread')?.checked ?? true;
-    const cards = document.querySelectorAll('#memorial-grid .memorial-card');
+    const cards = document.querySelectorAll('#relatos-grid .memorial-card');
 
     let visibleCount = 0;
     cards.forEach(card => {
@@ -181,7 +229,7 @@ window.filterMemorial = function() {
         const isRead = card.dataset.read === 'true';
 
         const matchesSearch = !searchTerm || titulo.includes(searchTerm) || relato.includes(searchTerm);
-        const matchesZone = !window._activeZone || zona === window._activeZone.toLowerCase();
+        const matchesZone = !window._activeRelatosZone || zona === window._activeRelatosZone.toLowerCase();
         
         let matchesStatus = false;
         if (isRead && showRead) matchesStatus = true;
@@ -195,38 +243,72 @@ window.filterMemorial = function() {
         }
     });
 
-    const emptyEl = document.getElementById('memorial-empty');
+    const emptyEl = document.getElementById('relatos-empty');
     if (emptyEl) {
         emptyEl.classList.toggle('hidden', visibleCount > 0);
     }
 }
 
-window.setZoneFilter = function(zone, btn) {
+window.setRelatosZoneFilter = function(zone, btn) {
     // Toggle same zone off
-    if (window._activeZone === zone) {
-        window._activeZone = null;
-        document.querySelectorAll('.zone-chip').forEach(c => c.classList.remove('is-active'));
+    if (window._activeRelatosZone === zone) {
+        window._activeRelatosZone = null;
+        document.querySelectorAll('#relatos-section .zone-chip').forEach(c => c.classList.remove('is-active'));
     } else {
-        window._activeZone = zone;
-        document.querySelectorAll('.zone-chip').forEach(c => c.classList.remove('is-active'));
+        window._activeRelatosZone = zone;
+        document.querySelectorAll('#relatos-section .zone-chip').forEach(c => c.classList.remove('is-active'));
         if (btn) btn.classList.add('is-active');
     }
-    window.filterMemorial();
+    window.filterRelatos();
 }
+
 
 function _esc(s) { return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
 // ─── MAP STATS UI ──────────────────────────
-window.toggleStats = function() {
-    const panel = document.getElementById('stats-panel');
-    const chevron = document.getElementById('stats-chevron');
-    if (panel) {
-        const isHidden = panel.classList.toggle('hidden');
+window.toggleMapFilters = function() {
+    const content = document.getElementById('filters-content');
+    const chevron = document.getElementById('filters-chevron');
+    if (content) {
+        const isHidden = content.classList.toggle('hidden');
+        if (!isHidden) {
+            _blockMapInteraction(content);
+        }
         if (chevron) {
             chevron.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(180deg)';
         }
     }
 };
+
+window.toggleStats = function() {
+    const panel = document.getElementById('stats-panel');
+    const chevron = document.getElementById('stats-chevron');
+    if (panel) {
+        const isHidden = panel.classList.toggle('hidden');
+        if (!isHidden) {
+            _blockMapInteraction(panel);
+        }
+        if (chevron) {
+            chevron.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(180deg)';
+        }
+    }
+};
+
+function _blockMapInteraction(el) {
+    if (typeof L === 'undefined') return;
+    
+    // Standard Leaflet blockers
+    L.DomEvent.disableScrollPropagation(el);
+    L.DomEvent.disableClickPropagation(el);
+
+    // Extra robust blockers for mobile touch
+    const events = ['touchstart', 'touchmove', 'touchend', 'pointerdown', 'pointermove', 'pointerup'];
+    events.forEach(evt => {
+        el.addEventListener(evt, (e) => {
+            e.stopPropagation();
+        }, { passive: false });
+    });
+}
 
 window.updateComunaStats = function(counts) {
     const list = document.getElementById('comunas-stats-list');

@@ -137,24 +137,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Update memorial cards
             window._lastZonas = zonas;
-            renderMemorialCards(relatosList, zonas);
+            renderRelatosCards(relatosList, zonas);
         });
     }
 });
 
-// Helper to refresh UI when returning to memorial (to show read status)
-window.refreshMemorialCards = function() {
+// Helper to refresh UI when returning to relatos (to show read status)
+window.refreshRelatosCards = function() {
     if (window._relatosList && window._relatosList.length > 0) {
-        renderMemorialCards(window._relatosList, window._lastZonas);
-        if (window.filterMemorial) window.filterMemorial();
+        renderRelatosCards(window._relatosList, window._lastZonas);
+        if (window.filterRelatos) window.filterRelatos();
     }
 };
 
-// ─── MEMORIAL CARD RENDERING ────────────────
-function renderMemorialCards(relatos, zonas) {
-    const grid = document.getElementById('memorial-grid');
-    const loadingText = document.getElementById('memorial-loading-text');
-    const zoneContainer = document.getElementById('memorial-zones');
+// ─── RELATOS CARD RENDERING ─────────────────
+function renderRelatosCards(relatos, zonas) {
+    const grid = document.getElementById('relatos-grid');
+    const loadingText = document.getElementById('relatos-loading-text');
+    const zoneContainer = document.getElementById('relatos-zones');
     if (!grid) return;
 
     // Remove skeletons
@@ -163,9 +163,9 @@ function renderMemorialCards(relatos, zonas) {
 
     // Render zone chips
     if (zoneContainer) {
-        const allBtn = `<button class="zone-chip is-active" onclick="setZoneFilter(null, this)">Todas</button>`;
+        const allBtn = `<button class="zone-chip is-active" onclick="setRelatosZoneFilter(null, this)">Todas</button>`;
         const chips = Array.from(zonas).sort().map(z =>
-            `<button class="zone-chip" onclick="setZoneFilter('${z}', this)">${z}</button>`
+            `<button class="zone-chip" onclick="setRelatosZoneFilter('${z}', this)">${z}</button>`
         ).join('');
         zoneContainer.innerHTML = allBtn + chips;
     }
@@ -220,7 +220,8 @@ function renderMemorialCards(relatos, zonas) {
         `;
     }).join('');
 
-    if (window.filterMemorial) window.filterMemorial();
+    if (window.filterRelatos) window.filterRelatos();
 }
+
 
 function _esc(s) { return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
