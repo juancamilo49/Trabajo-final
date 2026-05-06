@@ -8,6 +8,7 @@ import { db, collection, addDoc, onSnapshot } from './firebase-config.js';
 // Global cache for instant relato access
 window._relatosCache = {};
 window._relatosList = [];  // ordered array for prev/next nav
+window._lastZonas = new Set();
 
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -39,17 +40,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 feedback.textContent = 'Guardando reporte…';
                 feedback.classList.remove('hidden');
 
+                const latVal = parseFloat(lat);
+                const lngVal = parseFloat(lng);
+                const comuna = window.getComunaForCoords ? window.getComunaForCoords(latVal, lngVal) : "";
+
                 await addDoc(collection(db, "incidentes"), {
                     titulo: title,
                     relato: story.slice(0, 450 * 5),
-                    coordenadas: { lat: parseFloat(lat), lng: parseFloat(lng) },
+                    coordenadas: { lat: latVal, lng: lngVal },
                     fecha: new Date(),
                     tipo: "reporte",
-                    zona: "",
+                    zona: comuna,
                     imagen_url: ""
                 });
 
                 feedback.textContent = '¡Reporte enviado exitosamente de forma anónima!';
+                
+                // Show native alert for feedback as requested
+                setTimeout(() => {
+                    alert('Tu reporte ha sido guardado en el archivo vivo.');
+                    if (window.navigate) window.navigate('map');
+                }, 100);
+
                 form.reset();
                 document.getElementById('form-lat').value = '';
                 document.getElementById('form-lng').value = '';
@@ -68,6 +80,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const relatosList = [];
             const zonas = new Set();
 
+            const comunaCounts = {};
+
             snapshot.forEach((docSnap) => {
                 const data = docSnap.data();
                 if (!data.coordenadas) return;
@@ -76,26 +90,40 @@ document.addEventListener('DOMContentLoaded', () => {
                 const lng = parseFloat(data.coordenadas.lng);
                 if (isNaN(lat) || isNaN(lng)) return;
 
+                // Si no tiene zona asignada, intentamos detectarla si tenemos el detector listo
+                let itemComuna = data.zona || "";
+                if (!itemComuna && window.getComunaForCoords) {
+                    itemComuna = window.getComunaForCoords(lat, lng);
+                }
+
                 const item = {
                     id: docSnap.id,
                     lat,
                     lng,
                     titulo: data.titulo || 'Sin título',
                     relato: data.relato || '',
-                    zona: data.zona || '',
+                    zona: itemComuna,
                     fecha: data.fecha?.toDate ? data.fecha.toDate().toISOString() : (data.fecha || null)
                 };
+
+                if (data.tipo === 'relato' || data.tipo === 'reporte') {
+                    if (itemComuna && itemComuna !== "Desconocida" && itemComuna !== "Fuera de Medellín") {
+                        comunaCounts[itemComuna] = (comunaCounts[itemComuna] || 0) + 1;
+                    }
+                }
 
                 if (data.tipo === 'relato') {
                     relatos.push(item);
                     relatosList.push(item);
                     if (item.zona) zonas.add(item.zona);
-                    // Cache for instant access
                     window._relatosCache[docSnap.id] = item;
                 } else {
                     reportes.push(item);
                 }
             });
+
+            // Update stats UI
+            if (window.updateComunaStats) window.updateComunaStats(comunaCounts);
 
             // Sort relatos by title for consistent prev/next nav
             relatosList.sort((a, b) => a.titulo.localeCompare(b.titulo));
@@ -108,10 +136,19 @@ document.addEventListener('DOMContentLoaded', () => {
             if (window.updateRelatos) window.updateRelatos(relatos);
 
             // Update memorial cards
+            window._lastZonas = zonas;
             renderMemorialCards(relatosList, zonas);
         });
     }
 });
+
+// Helper to refresh UI when returning to memorial (to show read status)
+window.refreshMemorialCards = function() {
+    if (window._relatosList && window._relatosList.length > 0) {
+        renderMemorialCards(window._relatosList, window._lastZonas);
+        if (window.filterMemorial) window.filterMemorial();
+    }
+};
 
 // ─── MEMORIAL CARD RENDERING ────────────────
 function renderMemorialCards(relatos, zonas) {
@@ -139,6 +176,8 @@ function renderMemorialCards(relatos, zonas) {
         return;
     }
 
+    const readIds = JSON.parse(localStorage.getItem('readRelatos') || '[]');
+
     // Colors for card accents (cycle through)
     const accentColors = ['#DFFF00', '#00F5FF', '#FF003C', '#FF6B35', '#C77DFF'];
 
@@ -147,12 +186,14 @@ function renderMemorialCards(relatos, zonas) {
         const fecha = r.fecha ? new Date(r.fecha).toLocaleDateString('es-CO', { year: 'numeric', month: 'short' }) : '';
         const accent = accentColors[i % accentColors.length];
         const idShort = r.id.slice(0, 8).toUpperCase();
+        const isRead = readIds.includes(r.id);
 
         return `
-            <article class="memorial-card group cursor-pointer" 
+            <article class="memorial-card group cursor-pointer ${isRead ? 'is-read' : ''}" 
                      data-titulo="${_esc(r.titulo)}" 
                      data-zona="${_esc(r.zona)}" 
                      data-relato="${_esc(extracto)}"
+                     data-read="${isRead}"
                      onclick="openRelato('${r.id}')">
                 <div class="relative h-48 overflow-hidden bg-white/5 rounded-t-lg">
                     <div class="absolute inset-0 bg-gradient-to-br from-black/60 via-transparent to-black/80"></div>
@@ -160,6 +201,8 @@ function renderMemorialCards(relatos, zonas) {
                     <div class="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-background to-transparent"></div>
                     <!-- Accent line -->
                     <div class="absolute top-0 left-0 w-full h-1 transition-all duration-500 group-hover:h-2" style="background:${accent};box-shadow:0 0 12px ${accent}"></div>
+                    <!-- Read check -->
+                    ${isRead ? `<div class="absolute top-3 left-3 bg-safety text-background rounded-full w-6 h-6 flex items-center justify-center font-bold shadow-lg z-10">✔</div>` : ''}
                     <!-- File ID -->
                     <span class="absolute top-3 right-3 text-[10px] tracking-widest text-white/30 font-mono">CF-${idShort}</span>
                     <!-- Coords -->
@@ -170,12 +213,14 @@ function renderMemorialCards(relatos, zonas) {
                         <span class="text-[10px] tracking-widest uppercase" style="color:${accent}">${_esc(r.zona) || 'Medellín'}</span>
                         <span class="text-[10px] text-white/30">${fecha}</span>
                     </div>
-                    <h3 class="font-display text-lg font-bold mb-2 group-hover:text-safety transition-colors leading-tight">${_esc(r.titulo)}</h3>
+                    <h3 class="memorial-card-title font-display text-lg font-bold mb-2 group-hover:text-safety transition-colors leading-tight">${_esc(r.titulo)}</h3>
                     <p class="text-white/40 text-xs leading-relaxed line-clamp-2">${_esc(extracto)}…</p>
                 </div>
             </article>
         `;
     }).join('');
+
+    if (window.filterMemorial) window.filterMemorial();
 }
 
 function _esc(s) { return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }

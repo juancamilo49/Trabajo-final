@@ -6,6 +6,8 @@
 
 let globalMap = null;
 let heatLayer = null;
+let comunasLayer = null;
+let comunasData = null; // Para almacenar el GeoJSON crudo
 let formMap = null;
 let formMarker = null;
 
@@ -49,18 +51,36 @@ window.initMainMap = function () {
     // Heat layer
     if (typeof L.heatLayer !== 'undefined') {
         heatLayer = L.heatLayer([], {
-            radius: 35,
-            blur: 20,
-            maxZoom: 17,
+            radius: 25,
+            blur: 15,
+            maxZoom: 18,
             max: 0.6,
             gradient: { 0.2: '#FF003C', 0.5: '#DFFF00', 1.0: '#00F5FF' }
         });
     }
 
-    // Apply any data that arrived early
+    // Zoom listener for heatmap optimization
+    globalMap.on('zoomend', () => {
+        if (heatLayer && globalMap.hasLayer(heatLayer)) {
+            const zoom = globalMap.getZoom();
+            // Adjust radius based on zoom
+            let newRadius = 25;
+            let newBlur = 15;
+
+            if (zoom >= 16) { newRadius = 45; newBlur = 25; }
+            else if (zoom >= 14) { newRadius = 35; newBlur = 20; }
+            else if (zoom <= 11) { newRadius = 15; newBlur = 10; }
+
+            heatLayer.setOptions({ radius: newRadius, blur: newBlur });
+        }
+    });
+
     if (_storedReportes.length || _storedRelatos.length) {
         _renderMarkers();
     }
+
+    // Cargar capas administrativas
+    window.loadComunas();
 };
 
 // ─── INVALIDATE ─────────────────────────────
@@ -110,10 +130,17 @@ function _renderMarkers() {
     // ── Relatos (cyan, click opens preview bottom-sheet) ──
     if (relatoMarkers) {
         relatoMarkers.clearLayers();
+        const readIds = JSON.parse(localStorage.getItem('readRelatos') || '[]');
+        
         _storedRelatos.forEach(p => {
+            const isRead = readIds.includes(p.id);
             const icon = L.divIcon({
                 className: 'marker-relato',
-                html: '<div class="pulse-dot pulse-dot--cyan"></div>',
+                html: `
+                    <div class="pulse-dot pulse-dot--cyan ${isRead ? 'is-read' : ''}">
+                        ${isRead ? '<span class="read-check">✔</span>' : ''}
+                    </div>
+                `,
                 iconSize: [18, 18],
                 iconAnchor: [9, 9]
             });
@@ -275,6 +302,9 @@ window.toggleMapLayer = function (layerName, visible) {
     if (layerName === 'heatmap' && heatLayer) {
         visible ? globalMap.addLayer(heatLayer) : globalMap.removeLayer(heatLayer);
     }
+    if (layerName === 'comunas' && comunasLayer) {
+        visible ? globalMap.addLayer(comunasLayer) : globalMap.removeLayer(comunasLayer);
+    }
 };
 
 // ─── FLY-TO ─────────────────────────────────
@@ -317,4 +347,111 @@ window.initFormMap = function () {
     });
 
     setTimeout(() => formMap.invalidateSize(), 100);
+};
+
+// ─── PIP DETECTION ──────────────────────────
+function isPointInPoly(pt, poly) {
+    // pt: [lng, lat]
+    // poly: array of rings, poly[0] is the outer ring
+    if (!poly || !poly[0]) return false;
+    const ring = poly[0];
+    let x = pt[0], y = pt[1];
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        let xi = ring[i][0], yi = ring[i][1];
+        let xj = ring[j][0], yj = ring[j][1];
+        let intersect = ((yi > y) != (yj > y))
+            && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+    }
+    return inside;
+}
+
+window.getComunaForCoords = function(lat, lng) {
+    if (!comunasData) return "Desconocida";
+    
+    const point = [lng, lat]; // GeoJSON usa [lng, lat]
+    
+    for (const feature of comunasData.features) {
+        const geometry = feature.geometry;
+        if (!geometry) continue;
+
+        const type = geometry.type;
+        const coords = geometry.coordinates;
+        
+        if (type === 'Polygon') {
+            if (isPointInPoly(point, coords)) return feature.properties.NOMBRE || feature.properties.name || "Sin Nombre";
+        } else if (type === 'MultiPolygon') {
+            for (const polyCoords of coords) {
+                if (isPointInPoly(point, polyCoords)) return feature.properties.NOMBRE || feature.properties.name || "Sin Nombre";
+            }
+        }
+    }
+    return "Desconocida";
+};
+
+// ─── COMUNAS LAYER ──────────────────────────
+window.loadComunas = function () {
+    if (!globalMap || comunasLayer) return;
+
+    // Nueva URL verificada de GeoJSON de Medellín
+    const url = 'https://gist.githubusercontent.com/davixcky/ade2468ed713364fd5876a16305608b4/raw/medellin.geojson';
+    
+    console.info("Intentando cargar comunas desde:", url);
+
+    fetch(url)
+        .then(res => {
+            if (!res.ok) throw new Error("No se pudo cargar el archivo GeoJSON");
+            return res.json();
+        })
+        .then(data => {
+            comunasData = data; 
+            comunasLayer = L.geoJSON(data, {
+                style: function() {
+                    return {
+                        color: 'rgba(0, 245, 255, 0.5)',
+                        weight: 1.5,
+                        fillColor: 'rgba(0, 245, 255, 0.05)',
+                        fillOpacity: 0.1,
+                        dashArray: '4, 8'
+                    };
+                },
+                onEachFeature: function(feature, layer) {
+                    const props = feature.properties;
+                    // Mapeo de posibles nombres de propiedad según el archivo
+                    const name = props.NOMBRE || props.nombre || props.comuna || props.NOMBRE_COMUNA || props.LABEL;
+                    
+                    if (name) {
+                        layer.bindTooltip(name.toString().toUpperCase(), {
+                            sticky: true,
+                            className: 'comuna-tooltip',
+                            direction: 'top'
+                        });
+                    }
+
+                    layer.on('mouseover', function() {
+                        this.setStyle({
+                            fillOpacity: 0.25,
+                            color: 'rgba(0, 245, 255, 1)',
+                            weight: 2
+                        });
+                    });
+                    layer.on('mouseout', function() {
+                        if (comunasLayer) comunasLayer.resetStyle(this);
+                    });
+                }
+            });
+
+            // Solo añadir si el checkbox está marcado
+            const checkbox = document.getElementById('filter-comunas');
+            if (!checkbox || checkbox.checked) {
+                comunasLayer.addTo(globalMap);
+            }
+            
+            console.log("Capa de comunas integrada.");
+        })
+        .catch(err => {
+            console.warn("Fallo carga GeoJSON Comunas:", err.message);
+            // Fallback opcional si fuera necesario
+        });
 };

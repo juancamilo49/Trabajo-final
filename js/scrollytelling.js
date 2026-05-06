@@ -28,6 +28,13 @@ window.openRelato = function (docId) {
         if (heatCheck) heatCheck.checked = false;
     }
 
+    // Mark as read
+    const readIds = JSON.parse(localStorage.getItem('readRelatos') || '[]');
+    if (!readIds.includes(docId)) {
+        readIds.push(docId);
+        localStorage.setItem('readRelatos', JSON.stringify(readIds));
+    }
+
     navigate('story');
 
     const skeleton = document.getElementById('story-skeleton');
@@ -202,9 +209,19 @@ function _buildEcosHTML(docId) {
 
     return `
         <div class="border-t border-white/10 mt-16 pt-10" id="ecos-section">
-            <div class="flex items-center gap-3 mb-6">
-                <span class="text-safety text-xs tracking-[0.3em] uppercase">Ecos</span>
-                <span class="text-white/20 text-xs">— Muro anónimo de memoria</span>
+            <div class="flex flex-col mb-6">
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="text-safety text-xs tracking-[0.3em] uppercase font-bold">Ecos del archivo</span>
+                    <span class="inline-block w-2 h-2 rounded-full bg-safety animate-ping"></span>
+                </div>
+                <p class="text-white/40 text-xs leading-relaxed">
+                    Un muro anónimo de memoria. Cada eco es un rastro dejado por quienes han transitado este relato.
+                    <br><br>
+                    <span class="text-white/60 font-bold">Significado:</span><br>
+                    🕯️ <span class="text-white/40">Vela: Memoria y respeto</span> &nbsp;&nbsp; 
+                    🚲 <span class="text-white/40">Bici: Presencia ciclista</span> &nbsp;&nbsp; 
+                    ✦ <span class="text-white/40">Luz: Esperanza y rastro</span>
+                </p>
             </div>
 
             <!-- Eco input -->
@@ -375,7 +392,9 @@ window.closeRelato = function () {
         window.flyToLocation(6.2442, -75.5812, 13);
     }
 
-    navigate('memorial');
+    // Smart redirect: return to previous view ID (map, memorial, etc.)
+    const target = window._previousViewId || 'memorial';
+    navigate(target);
 };
 
 function _esc(s) { return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }

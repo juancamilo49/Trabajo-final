@@ -5,6 +5,8 @@
 
 document.addEventListener('DOMContentLoaded', () => {
     console.log("App Initialized");
+    window._currentViewId = 'home';
+    console.log("App Version: 2026-05-06-12:20");
     
     try {
         if (window.initMainMap) window.initMainMap();
@@ -36,6 +38,15 @@ const ALL_SECTIONS = [
 ];
 
 window.navigate = function(viewId) {
+    const fromViewId = window._currentViewId;
+
+    // Store previous view if we are going to 'story'
+    if (viewId === 'story') {
+        window._previousViewId = fromViewId || 'memorial';
+    } else {
+        window._currentViewId = viewId;
+    }
+
     // Hide all
     ALL_SECTIONS.forEach(id => {
         const el = document.getElementById(id);
@@ -51,10 +62,19 @@ window.navigate = function(viewId) {
     else if (viewId === 'map') {
         document.getElementById('main-map-container').classList.remove('hidden');
         if (window.invalidateMapSize) window.invalidateMapSize();
+        
+        // Reset view when going to map (unless returning from story)
+        if (window.globalMap && fromViewId !== 'story') {
+            window.globalMap.setView([6.2442, -75.5812], 13);
+        }
+
+        // Force marker refresh for read status
+        if (window.updateRelatos && window._relatosList) window.updateRelatos(window._relatosList);
     }
     else if (viewId === 'memorial') {
         document.getElementById('memorial-archive').classList.remove('hidden');
         if (typeof _initBackToTop === 'function') _initBackToTop();
+        if (window.refreshMemorialCards) window.refreshMemorialCards();
     }
     else if (viewId === 'participate') {
         document.getElementById('participation-zone').classList.remove('hidden');
@@ -145,10 +165,12 @@ function _initBackToTop() {
 }
 
 // ─── MEMORIAL FILTERING ─────────────────────
-let _activeZone = null;
+window._activeZone = null;
 
-function filterMemorial() {
+window.filterMemorial = function() {
     const searchTerm = (document.getElementById('memorial-search')?.value || '').toLowerCase();
+    const showRead = document.getElementById('filter-read')?.checked ?? true;
+    const showUnread = document.getElementById('filter-unread')?.checked ?? true;
     const cards = document.querySelectorAll('#memorial-grid .memorial-card');
 
     let visibleCount = 0;
@@ -156,11 +178,16 @@ function filterMemorial() {
         const titulo = (card.dataset.titulo || '').toLowerCase();
         const zona = (card.dataset.zona || '').toLowerCase();
         const relato = (card.dataset.relato || '').toLowerCase();
+        const isRead = card.dataset.read === 'true';
 
         const matchesSearch = !searchTerm || titulo.includes(searchTerm) || relato.includes(searchTerm);
-        const matchesZone = !_activeZone || zona === _activeZone.toLowerCase();
+        const matchesZone = !window._activeZone || zona === window._activeZone.toLowerCase();
+        
+        let matchesStatus = false;
+        if (isRead && showRead) matchesStatus = true;
+        if (!isRead && showUnread) matchesStatus = true;
 
-        if (matchesSearch && matchesZone) {
+        if (matchesSearch && matchesZone && matchesStatus) {
             card.classList.remove('hidden');
             visibleCount++;
         } else {
@@ -174,17 +201,49 @@ function filterMemorial() {
     }
 }
 
-function setZoneFilter(zone, btn) {
+window.setZoneFilter = function(zone, btn) {
     // Toggle same zone off
-    if (_activeZone === zone) {
-        _activeZone = null;
+    if (window._activeZone === zone) {
+        window._activeZone = null;
         document.querySelectorAll('.zone-chip').forEach(c => c.classList.remove('is-active'));
     } else {
-        _activeZone = zone;
+        window._activeZone = zone;
         document.querySelectorAll('.zone-chip').forEach(c => c.classList.remove('is-active'));
         if (btn) btn.classList.add('is-active');
     }
-    filterMemorial();
+    window.filterMemorial();
 }
 
 function _esc(s) { return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+// ─── MAP STATS UI ──────────────────────────
+window.toggleStats = function() {
+    const panel = document.getElementById('stats-panel');
+    const chevron = document.getElementById('stats-chevron');
+    if (panel) {
+        const isHidden = panel.classList.toggle('hidden');
+        if (chevron) {
+            chevron.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(180deg)';
+        }
+    }
+};
+
+window.updateComunaStats = function(counts) {
+    const list = document.getElementById('comunas-stats-list');
+    if (!list) return;
+    
+    if (Object.keys(counts).length === 0) {
+        list.innerHTML = '<span class="text-[10px] text-white/40 italic">No hay relatos registrados</span>';
+        return;
+    }
+
+    // Sort by count descending
+    const sortedComunas = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    
+    list.innerHTML = sortedComunas.map(([name, count]) => `
+        <div class="flex items-center justify-between text-[11px] group">
+            <span class="text-white/70 group-hover:text-city transition-colors truncate max-w-[120px]">${name}</span>
+            <span class="bg-white/5 border border-white/10 px-1.5 py-0.5 rounded text-city font-mono">${count}</span>
+        </div>
+    `).join('');
+};
