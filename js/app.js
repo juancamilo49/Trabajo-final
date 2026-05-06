@@ -35,7 +35,7 @@ const ALL_SECTIONS = [
     'participation-zone'
 ];
 
-function navigate(viewId) {
+window.navigate = function(viewId) {
     // Hide all
     ALL_SECTIONS.forEach(id => {
         const el = document.getElementById(id);
@@ -43,7 +43,7 @@ function navigate(viewId) {
     });
 
     // Close any open preview
-    closeRelatoPreview();
+    if (window.closeRelatoPreview) window.closeRelatoPreview();
 
     if (viewId === 'home') {
         document.getElementById('section-hero').classList.remove('hidden');
@@ -54,7 +54,7 @@ function navigate(viewId) {
     }
     else if (viewId === 'memorial') {
         document.getElementById('memorial-archive').classList.remove('hidden');
-        _initBackToTop();
+        if (typeof _initBackToTop === 'function') _initBackToTop();
     }
     else if (viewId === 'participate') {
         document.getElementById('participation-zone').classList.remove('hidden');
@@ -69,7 +69,7 @@ function navigate(viewId) {
 }
 
 // ─── MOBILE MENU ─────────────────────────────
-function toggleMobileMenu() {
+window.toggleMobileMenu = function() {
     const menu = document.getElementById('mobile-menu');
     const btn = document.getElementById('hamburger-btn');
     const isOpen = !menu.classList.contains('hidden');
@@ -82,7 +82,7 @@ function toggleMobileMenu() {
     }
 }
 
-function closeMobileMenu() {
+window.closeMobileMenu = function() {
     document.getElementById('mobile-menu').classList.add('hidden');
     document.getElementById('hamburger-btn').classList.remove('is-open');
 }

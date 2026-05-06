@@ -15,12 +15,18 @@ const ECO_SYMBOLS = [
     { id: 2, icon: '✦',  label: 'Luz' }
 ];
 
-// ─── OPEN RELATO ─────────────────────────────
 window.openRelato = function (docId) {
     _currentRelatoId = docId;
 
     // Clean up previous ecos listener
     if (_ecosUnsubscribe) { _ecosUnsubscribe(); _ecosUnsubscribe = null; }
+
+    // Auto-disable heatmap for better visibility of the story map
+    if (window.toggleMapLayer) {
+        window.toggleMapLayer('heatmap', false);
+        const heatCheck = document.getElementById('filter-heatmap');
+        if (heatCheck) heatCheck.checked = false;
+    }
 
     navigate('story');
 
