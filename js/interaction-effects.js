@@ -5,6 +5,8 @@
 // User "scratches" to reveal the image beneath.
 // ──────────────────────────────────────────────
 
+import { muffleSound, unmuffleSound } from './audio.js';
+
 window.initScratchReveal = function (canvasId, onRevealed) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
@@ -44,15 +46,15 @@ window.initScratchReveal = function (canvasId, onRevealed) {
     }
 
     // Mouse events
-    canvas.addEventListener('mousedown', (e) => { isDrawing = true; const p = getPos(e); erase(p.x, p.y); });
+    canvas.addEventListener('mousedown', (e) => { isDrawing = true; muffleSound(); const p = getPos(e); erase(p.x, p.y); });
     canvas.addEventListener('mousemove', (e) => { if (isDrawing) { const p = getPos(e); erase(p.x, p.y); _checkReveal(); } });
-    canvas.addEventListener('mouseup', () => { isDrawing = false; _checkReveal(); });
-    canvas.addEventListener('mouseleave', () => { isDrawing = false; });
+    canvas.addEventListener('mouseup', () => { isDrawing = false; unmuffleSound(); _checkReveal(); });
+    canvas.addEventListener('mouseleave', () => { if (isDrawing) { isDrawing = false; unmuffleSound(); } });
 
     // Touch events (mobile)
-    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); isDrawing = true; const p = getPos(e); erase(p.x, p.y); }, { passive: false });
+    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); isDrawing = true; muffleSound(); const p = getPos(e); erase(p.x, p.y); }, { passive: false });
     canvas.addEventListener('touchmove', (e) => { e.preventDefault(); if (isDrawing) { const p = getPos(e); erase(p.x, p.y); _checkReveal(); } }, { passive: false });
-    canvas.addEventListener('touchend', () => { isDrawing = false; _checkReveal(); });
+    canvas.addEventListener('touchend', () => { isDrawing = false; unmuffleSound(); _checkReveal(); });
 
     function _checkReveal() {
         if (revealed) return;

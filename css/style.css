@@ -33,6 +33,24 @@
 #nav-main { z-index: 9999; }
 #form-map-container { min-height: 400px; background: #111; }
 
+.satellite-night-filter {
+    filter: brightness(0.4) contrast(1.2) sepia(1) hue-rotate(180deg) saturate(0.8) !important;
+}
+
+/* Info Tooltip Native CSS */
+.info-tooltip-content {
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+    pointer-events: none;
+}
+.info-tooltip-container:hover .info-tooltip-content,
+.info-tooltip-container.active .info-tooltip-content {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+}
+
 /* ─── Scrollytelling steps ──────────────── */
 .step { transition: opacity 0.5s ease; opacity: 0.25; }
 .step.is-active { opacity: 1; }

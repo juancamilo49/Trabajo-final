@@ -1,4 +1,5 @@
-// js/map.js
+import { setZoomVolume, muffleSound, unmuffleSound, playPedal } from './audio.js';
+
 // ──────────────────────────────────────────────
 // Leaflet map, markers, filter controls, connector lines
 // Both reportes and relatos use custom preview popups
@@ -37,6 +38,12 @@ let _storedRelatos = [];
 const cartoDarkMatter = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 const cartoAttribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
+const satelliteUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+const satelliteAttribution = 'Tiles &copy; Esri &mdash; Source: Esri...';
+
+let baseTileLayer = null;
+let satelliteTileLayer = null;
+
 // ─── MAIN MAP ────────────────────────────────
 window.initMainMap = function () {
     if (globalMap) return;
@@ -47,11 +54,19 @@ window.initMainMap = function () {
         zoomControl: false
     }).setView(medellinCoords, 13);
 
-    L.tileLayer(cartoDarkMatter, {
+    baseTileLayer = L.tileLayer(cartoDarkMatter, {
         attribution: cartoAttribution,
         subdomains: 'abcd',
         maxZoom: 20
-    }).addTo(globalMap);
+    });
+
+    satelliteTileLayer = L.tileLayer(satelliteUrl, {
+        attribution: satelliteAttribution,
+        maxZoom: 19,
+        className: 'satellite-night-filter'
+    });
+
+    baseTileLayer.addTo(globalMap);
 
     L.control.zoom({ position: 'bottomright' }).addTo(globalMap);
 
@@ -83,6 +98,20 @@ window.initMainMap = function () {
 
             heatLayer.setOptions({ radius: newRadius, blur: newBlur });
         }
+        
+        // Update audio volume based on zoom
+        setZoomVolume(globalMap.getZoom());
+    });
+
+    // Also update volume during the zoom animation (flyTo)
+    // Update volume on zoom and move for smooth flyTo transitions
+    globalMap.on('zoom move', () => {
+        setZoomVolume(globalMap.getZoom());
+    });
+
+    // Subtle pedal sound when panning/moving the map
+    globalMap.on('movestart', () => {
+        playPedal();
     });
 
     if (_storedReportes.length || _storedRelatos.length) {
@@ -195,6 +224,7 @@ let _activeReporte = null;
 function _showReportePreview(p) {
     _activeReporte = p;
     _clearConnector();
+    muffleSound();
     const preview = document.getElementById('relato-preview');
     const content = document.getElementById('relato-preview-content');
     if (!preview || !content) return;
@@ -220,6 +250,7 @@ function _showReportePreview(p) {
 function _showEnCiclaPreview(p) {
     _activeReporte = p;
     _clearConnector();
+    muffleSound();
     const preview = document.getElementById('relato-preview');
     const content = document.getElementById('relato-preview-content');
     if (!preview || !content) return;
@@ -244,6 +275,7 @@ function _showEnCiclaPreview(p) {
 function _showMuertePreview(p) {
     _activeReporte = p;
     _clearConnector();
+    muffleSound();
     const preview = document.getElementById('relato-preview');
     const content = document.getElementById('relato-preview-content');
     if (!preview || !content) return;
@@ -306,6 +338,7 @@ function _clearConnector() {
 const _originalShowRelato = window.showRelatoPreview;
 window.showRelatoPreview = function (docId) {
     if (typeof _originalShowRelato === 'function') _originalShowRelato(docId);
+    muffleSound();
     const cache = window._relatosCache || {};
     const relato = cache[docId];
     if (relato && relato.lat && relato.lng) {
@@ -322,6 +355,7 @@ window.showRelatoPreview = function (docId) {
 const _originalClose = window.closeRelatoPreview;
 window.closeRelatoPreview = function () {
     _clearConnector();
+    unmuffleSound();
     if (typeof _originalClose === 'function') _originalClose();
 };
 
@@ -567,5 +601,16 @@ window.toggleMapLayer = function (type, active) {
         case 'ciclorrutas': active ? window.loadCiclorrutas() : (cicloLayer && globalMap.removeLayer(cicloLayer)); break;
         case 'muertes': active ? window.loadIncidentesSiClas() : (muertesLayer && globalMap.removeLayer(muertesLayer)); break;
         case 'encicla': active ? window.loadEnCicla() : (enciclaLayer && globalMap.removeLayer(enciclaLayer)); break;
+    }
+};
+
+window.toggleSatelliteMode = function(active) {
+    if (!globalMap) return;
+    if (active) {
+        if (globalMap.hasLayer(baseTileLayer)) globalMap.removeLayer(baseTileLayer);
+        satelliteTileLayer.addTo(globalMap);
+    } else {
+        if (globalMap.hasLayer(satelliteTileLayer)) globalMap.removeLayer(satelliteTileLayer);
+        baseTileLayer.addTo(globalMap);
     }
 };

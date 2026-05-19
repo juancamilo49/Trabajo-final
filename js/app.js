@@ -1,4 +1,5 @@
-// js/app.js
+import { initAudio, setPageContext, unmuffleSound, playHonk } from './audio.js';
+
 // ──────────────────────────────────────────────
 // SPA Navigation + Mobile Menu
 // ──────────────────────────────────────────────
@@ -12,6 +13,20 @@ document.addEventListener('DOMContentLoaded', () => {
         if (window.initMainMap) window.initMainMap();
     } catch (e) {
         console.error("Error initializing map:", e);
+    }
+
+    // ── Audio Overlay ──
+    const audioOverlay = document.getElementById('audio-overlay');
+    if (audioOverlay) {
+        document.getElementById('btn-audio-yes')?.addEventListener('click', () => {
+            initAudio();
+            audioOverlay.style.opacity = '0';
+            setTimeout(() => { audioOverlay.classList.add('hidden'); }, 1000);
+        });
+        document.getElementById('btn-audio-no')?.addEventListener('click', () => {
+            audioOverlay.style.opacity = '0';
+            setTimeout(() => { audioOverlay.classList.add('hidden'); }, 1000);
+        });
     }
 
     // ── Hero scratch canvas ──
@@ -64,6 +79,21 @@ document.addEventListener('DOMContentLoaded', () => {
             if (el) _blockMapInteraction(el);
         });
     }, 500);
+
+    // ── Bicycle Bell Interaction ──
+    const bikeLogos = document.querySelectorAll('.logo-icon, .nav-logo img');
+    bikeLogos.forEach(logo => {
+        logo.style.cursor = 'pointer';
+        logo.addEventListener('click', (e) => {
+            playHonk();
+            // Visual feedback
+            logo.animate([
+                { transform: 'scale(1) rotate(0)' },
+                { transform: 'scale(1.2) rotate(15deg)' },
+                { transform: 'scale(1) rotate(0)' }
+            ], { duration: 300, easing: 'ease-out' });
+        });
+    });
 });
 
 // All navigable section IDs
@@ -138,6 +168,12 @@ window.navigate = function(viewId) {
         document.getElementById('story-viewer').classList.remove('hidden');
         if (window.invalidateMapSize) window.invalidateMapSize();
     }
+    
+    // Update audio context for the new view
+    setPageContext(viewId);
+    
+    // Always unmuffle on navigation to ensure clear sound
+    unmuffleSound();
 }
 
 // ─── MOBILE MENU ─────────────────────────────
@@ -265,7 +301,6 @@ window.setRelatosZoneFilter = function(zone, btn) {
 
 function _esc(s) { return (s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
-// ─── MAP STATS UI ──────────────────────────
 window.toggleMapFilters = function() {
     const content = document.getElementById('filters-content');
     const chevron = document.getElementById('filters-chevron');
@@ -279,6 +314,24 @@ window.toggleMapFilters = function() {
         }
     }
 };
+
+window.toggleTooltip = function(btn, event) {
+    if (event) event.stopPropagation();
+    const container = btn.closest('.info-tooltip-container');
+    const isActive = container.classList.contains('active');
+    
+    // Close all other tooltips
+    document.querySelectorAll('.info-tooltip-container').forEach(c => c.classList.remove('active'));
+    
+    if (!isActive) {
+        container.classList.add('active');
+    }
+};
+
+// Close tooltip when clicking outside
+document.addEventListener('click', () => {
+    document.querySelectorAll('.info-tooltip-container').forEach(c => c.classList.remove('active'));
+});
 
 window.toggleStats = function() {
     const panel = document.getElementById('stats-panel');
